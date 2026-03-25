@@ -22,6 +22,8 @@ const port = Number(process.env.PORT ?? 4000);
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const groqApiKey = process.env.GROQ_API_KEY;
+const groqModel = process.env.GROQ_MODEL ?? "llama-3.1-8b-instant";
 const corsOriginsRaw =
   process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? "http://localhost:5173";
 const allowedOrigins = corsOriginsRaw
@@ -79,6 +81,10 @@ const registerSchema = z.object({
   classId: z.string().uuid()
 });
 
+const aiChatSchema = z.object({
+  prompt: z.string().trim().min(1).max(4000)
+});
+
 const classInsertSchema = z
   .object({
     created_by: z.string().uuid(),
@@ -100,6 +106,17 @@ type CommunityClass = {
   capacity: number;
   created_at: string;
   created_by: string;
+};
+
+type GroqChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
 };
 
 function readBearerToken(request: Request) {
@@ -176,6 +193,49 @@ async function upsertUserRole(userId: string, role: UserRole) {
     .upsert({ id: userId, role }, { onConflict: "id" });
 
   return error;
+}
+
+async function generateGroqResponse(prompt: string): Promise<string> {
+  if (!groqApiKey) {
+    throw new Error("Missing GROQ_API_KEY in apps/api/.env");
+  }
+
+  const completionResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${groqApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: groqModel,
+      messages: [
+        {
+          role: "system",
+          content: "You are a concise assistant for community class app users."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2
+    })
+  });
+
+  const completionData =
+    (await completionResponse.json().catch(() => null)) as GroqChatCompletionResponse | null;
+
+  if (!completionResponse.ok) {
+    const apiMessage = completionData?.error?.message ?? `Groq request failed (${completionResponse.status})`;
+    throw new Error(apiMessage);
+  }
+
+  const content = completionData?.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("Groq returned an empty response.");
+  }
+
+  return content;
 }
 
 app.get("/health", (_request, response) => {
@@ -447,6 +507,32 @@ app.post("/api/member/registrations", async (request, response) => {
   }
 
   response.status(201).json({ message: "Registration successful." } satisfies AuthResponse);
+});
+
+app.post("/api/ai/chat", async (request, response) => {
+  const user = await requireUser(request, response);
+  if (!user) {
+    return;
+  }
+
+  const parsed = aiChatSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "Invalid chat payload. `prompt` is required." });
+    return;
+  }
+
+  try {
+    const reply = await generateGroqResponse(parsed.data.prompt);
+    response.json({
+      message: "AI response generated.",
+      role: user.role,
+      reply
+    });
+  } catch (error) {
+    response.status(502).json({
+      error: error instanceof Error ? error.message : "Groq request failed."
+    });
+  }
 });
 
 app.listen(port, () => {

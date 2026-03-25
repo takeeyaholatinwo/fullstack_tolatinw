@@ -49,6 +49,8 @@ SUPABASE_URL="https://YOUR-PROJECT-ID.supabase.co"
 SUPABASE_PUBLISHABLE_KEY="YOUR_SUPABASE_PUBLISHABLE_KEY"
 SUPABASE_SERVICE_ROLE_KEY="YOUR_SUPABASE_SERVICE_ROLE_KEY"
 CORS_ORIGINS="https://YOUR-VERCEL-DOMAIN.vercel.app,http://localhost:5173"
+GROQ_API_KEY="YOUR_GROQ_API_KEY"
+GROQ_MODEL="llama-3.1-8b-instant"
 PORT=4000
 ```
 
@@ -93,6 +95,9 @@ Admin:
 Member:
 - `GET /api/member/classes`
 - `POST /api/member/registrations`
+
+AI (authenticated):
+- `POST /api/ai/chat` with body `{ "prompt": "..." }`
 
 Promote user to admin:
 

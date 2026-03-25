@@ -27,6 +27,13 @@ type AuthResponse = {
   role?: UserRole;
 };
 
+type AiChatResponse = {
+  error?: string;
+  message?: string;
+  role?: UserRole;
+  reply?: string;
+};
+
 const envApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
 const apiBaseUrl = (envApiBaseUrl || "http://localhost:4000").replace(/\/$/, "");
 
@@ -77,6 +84,9 @@ export default function App() {
   const [createLoading, setCreateLoading] = useState(false);
 
   const [registeringClassId, setRegisteringClassId] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiReply, setAiReply] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const dashboardTitle = useMemo(() => {
     if (!currentRole) {
@@ -297,7 +307,60 @@ export default function App() {
     setCurrentRole(null);
     setAdminClasses([]);
     setMemberClasses([]);
+    setAiPrompt("");
+    setAiReply("");
     setStatus("Logged out.");
+  }
+
+  async function handleAiSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!accessToken) {
+      setStatus("Log in to use the AI assistant.");
+      return;
+    }
+
+    const trimmedPrompt = aiPrompt.trim();
+    if (!trimmedPrompt) {
+      setStatus("Enter a prompt first.");
+      return;
+    }
+
+    setAiLoading(true);
+    setStatus("");
+
+    try {
+      const response = await fetch(apiUrl("/api/ai/chat"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ prompt: trimmedPrompt })
+      });
+
+      const data = await parseApiJson<AiChatResponse>(response);
+      if (!response.ok) {
+        setStatus(data.error ?? "AI request failed.");
+        return;
+      }
+
+      if (!data.reply) {
+        setStatus("AI returned no response.");
+        return;
+      }
+
+      setAiReply(data.reply);
+      setStatus(data.message ?? "AI response generated.");
+    } catch (error) {
+      if (error instanceof Error) {
+        setStatus(error.message);
+        return;
+      }
+      setStatus("Could not reach the AI endpoint.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   return (
@@ -485,6 +548,25 @@ export default function App() {
                 })}
               </ul>
             )}
+          </section>
+        )}
+
+        {accessToken && (
+          <section className="stack">
+            <h2>AI Assistant</h2>
+            <form onSubmit={handleAiSubmit} className="stack">
+              <textarea
+                placeholder="Ask for class ideas, schedules, or quick suggestions..."
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                rows={4}
+                required
+              />
+              <button type="submit" disabled={aiLoading}>
+                {aiLoading ? "Thinking..." : "Ask AI"}
+              </button>
+            </form>
+            {aiReply && <p>{aiReply}</p>}
           </section>
         )}
 
