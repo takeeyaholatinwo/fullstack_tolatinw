@@ -510,7 +510,7 @@ app.post("/api/member/registrations", async (request, response) => {
 });
 
 app.post("/api/ai/chat", async (request, response) => {
-  const user = await requireUser(request, response);
+  const user = await requireUser(request, response, ["admin"]);
   if (!user) {
     return;
   }

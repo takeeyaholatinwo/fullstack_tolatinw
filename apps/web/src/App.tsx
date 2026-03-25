@@ -551,7 +551,7 @@ export default function App() {
           </section>
         )}
 
-        {accessToken && (
+        {accessToken && currentRole === "admin" && (
           <section className="stack">
             <h2>AI Assistant</h2>
             <form onSubmit={handleAiSubmit} className="stack">
